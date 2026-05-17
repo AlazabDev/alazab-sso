@@ -4,11 +4,11 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { signInWithOAuth, signInWithEmail } from '@/lib/auth/providers'
+import { signInWithOAuth, signInWithEmail, signInWithEntra } from '@/lib/auth/providers'
 import { useRouter } from 'next/navigation'
 import axios from 'axios'
 
-type Provider = 'google' | 'apple' | 'facebook' | 'github'
+type Provider = 'google' | 'apple' | 'facebook' | 'github' | 'entra'
 
 interface LoginFormData {
   email: string
@@ -29,7 +29,12 @@ export function MultiProviderLogin() {
     try {
       setIsLoading(true)
       setError(null)
-      await signInWithOAuth({ provider })
+      
+      if (provider === 'entra') {
+        await signInWithEntra()
+      } else {
+        await signInWithOAuth({ provider })
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to sign in'
       setError(errorMessage)
@@ -68,6 +73,11 @@ export function MultiProviderLogin() {
   }
 
   const providers: { id: Provider; label: string; icon: string }[] = [
+    {
+      id: 'entra',
+      label: 'Microsoft Entra',
+      icon: '🪟',
+    },
     {
       id: 'google',
       label: 'Google',

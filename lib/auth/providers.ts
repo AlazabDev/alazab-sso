@@ -1,4 +1,4 @@
-export type OAuthProvider = 'google' | 'apple' | 'facebook' | 'github'
+export type OAuthProvider = 'google' | 'apple' | 'facebook' | 'github' | 'entra'
 
 export interface SignInOptions {
   provider: OAuthProvider
@@ -106,4 +106,10 @@ export async function updatePassword(newPassword: string) {
   if (error) {
     throw new Error(error.message)
   }
+}
+
+export async function signInWithEntra() {
+  const { getEntraAuthUrl } = await import('./entra-service')
+  const authUrl = await getEntraAuthUrl()
+  window.location.href = authUrl
 }
