@@ -94,6 +94,11 @@ export function MultiProviderLogin() {
       icon: '👤',
     },
     {
+      id: 'whatsapp',
+      label: 'Whatsapp',
+      icon: '🟢',
+    },
+    {
       id: 'github',
       label: 'GitHub',
       icon: '⚙️',
