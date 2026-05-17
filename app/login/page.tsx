@@ -1,10 +1,7 @@
+'use client'
+
 import { MultiProviderLogin } from '@/components/auth/multi-provider-login'
 import { GradientCanvas } from '@/components/gradient-canvas'
-
-export const metadata = {
-  title: 'Sign In - SSO System',
-  description: 'Sign in to your account with multiple authentication options',
-}
 
 export default function LoginPage() {
   return (

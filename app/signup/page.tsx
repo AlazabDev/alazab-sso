@@ -1,10 +1,7 @@
+'use client'
+
 import { SignUpForm } from '@/components/auth/signup-form'
 import { GradientCanvas } from '@/components/gradient-canvas'
-
-export const metadata = {
-  title: 'Sign Up - SSO System',
-  description: 'Create a new account on our platform',
-}
 
 export default function SignUpPage() {
   return (
