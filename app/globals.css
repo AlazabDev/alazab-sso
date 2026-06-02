@@ -4,39 +4,39 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --background: #fafafa;
+  --foreground: #030957;
+  --card: #ffffff;
+  --card-foreground: #030957;
+  --popover: #ffffff;
+  --popover-foreground: #030957;
+  --primary: #030957;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #030957;
+  --muted: #e5e5e5;
+  --muted-foreground: #666666;
+  --accent: #FFB900;
+  --accent-foreground: #030957;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e0e0e0;
+  --input: #f0f0f0;
+  --ring: #FFB900;
+  --chart-1: #030957;
+  --chart-2: #FFB900;
+  --chart-3: #666666;
+  --chart-4: #FFB900;
+  --chart-5: #030957;
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: #ffffff;
+  --sidebar-foreground: #030957;
+  --sidebar-primary: #030957;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #FFB900;
+  --sidebar-accent-foreground: #030957;
+  --sidebar-border: #e0e0e0;
+  --sidebar-ring: #FFB900;
 }
 
 .dark {
@@ -75,7 +75,7 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-tajawal);
   --font-mono: var(--font-geist-mono);
   /* Added JetBrains Mono font variable */
   --font-jetbrains: var(--font-jetbrains-mono);
@@ -124,4 +124,15 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Geometric background pattern */
+.geometric-pattern {
+  background-image:
+    linear-gradient(45deg, rgba(3, 9, 87, 0.02) 1px, transparent 1px),
+    linear-gradient(-45deg, rgba(3, 9, 87, 0.02) 1px, transparent 1px),
+    linear-gradient(45deg, rgba(255, 185, 0, 0.01) 2px, transparent 2px),
+    linear-gradient(-45deg, rgba(255, 185, 0, 0.01) 2px, transparent 2px);
+  background-size: 40px 40px, 40px 40px, 80px 80px, 80px 80px;
+  background-position: 0 0, 0 0, 20px 20px, 20px 20px;
 }

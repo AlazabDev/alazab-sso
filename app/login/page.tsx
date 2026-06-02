@@ -1,17 +1,19 @@
 'use client'
 
-import { MultiProviderLogin } from '@/components/auth/multi-provider-login'
-import { GradientCanvas } from '@/components/gradient-canvas'
+import { LoginHeroSection } from '@/components/auth/login-hero-section'
+import { AlazabLoginCard } from '@/components/auth/alazab-login-card'
 
 export default function LoginPage() {
   return (
-    <div className="relative w-full min-h-screen flex items-center justify-center bg-background overflow-hidden">
-      {/* Gradient background */}
-      <GradientCanvas />
+    <div className="w-full min-h-screen flex items-center justify-center bg-background overflow-hidden">
+      <div className="w-full max-w-6xl flex items-center rounded-2xl overflow-hidden">
+        {/* Hero Section (Left) */}
+        <LoginHeroSection />
 
-      {/* Content */}
-      <div className="relative z-10 w-full px-4 py-8">
-        <MultiProviderLogin />
+        {/* Login Card (Right) */}
+        <div className="w-full lg:w-1/2 px-4 py-8 lg:px-0">
+          <AlazabLoginCard />
+        </div>
       </div>
     </div>
   )
