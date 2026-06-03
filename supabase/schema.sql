@@ -428,3 +428,173 @@ CREATE TRIGGER update_admin_settings_timestamp
   BEFORE UPDATE ON public.admin_settings
   FOR EACH ROW
   EXECUTE FUNCTION update_timestamp();
+
+-- =====================================================
+-- 17. USER ACTIVITY LOGS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.user_activity_logs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  action_type TEXT CHECK (action_type IN ('login', 'logout', 'settings_change', 'device_add', 'device_remove', 'password_change', 'profile_update')) DEFAULT 'login',
+  resource_type TEXT,
+  resource_id TEXT,
+  description TEXT,
+  ip_address INET,
+  user_agent TEXT,
+  device_info JSONB,
+  status TEXT CHECK (status IN ('success', 'failed')) DEFAULT 'success',
+  error_message TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 18. USER DEVICES TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.user_devices (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  device_name TEXT NOT NULL,
+  device_type TEXT CHECK (device_type IN ('web', 'mobile', 'desktop', 'tablet')),
+  device_os TEXT,
+  browser_name TEXT,
+  browser_version TEXT,
+  ip_address INET,
+  user_agent TEXT,
+  is_trusted BOOLEAN DEFAULT false,
+  last_activity_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 19. NOTIFICATIONS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  notification_type TEXT NOT NULL CHECK (notification_type IN ('login', 'security', 'account', 'admin', 'system')),
+  title TEXT NOT NULL,
+  message TEXT NOT NULL,
+  action_url TEXT,
+  is_read BOOLEAN DEFAULT false,
+  read_at TIMESTAMP WITH TIME ZONE,
+  sent_via TEXT[] DEFAULT '{"in_app"}'::text[],
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  expires_at TIMESTAMP WITH TIME ZONE
+);
+
+-- =====================================================
+-- 20. NOTIFICATION PREFERENCES TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.notification_preferences (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  login_notifications BOOLEAN DEFAULT true,
+  security_notifications BOOLEAN DEFAULT true,
+  account_notifications BOOLEAN DEFAULT true,
+  admin_notifications BOOLEAN DEFAULT false,
+  system_notifications BOOLEAN DEFAULT true,
+  email_login BOOLEAN DEFAULT true,
+  email_security BOOLEAN DEFAULT true,
+  email_account BOOLEAN DEFAULT false,
+  email_admin BOOLEAN DEFAULT false,
+  email_system BOOLEAN DEFAULT false,
+  push_enabled BOOLEAN DEFAULT false,
+  quiet_hours_enabled BOOLEAN DEFAULT false,
+  quiet_hours_start TIME,
+  quiet_hours_end TIME,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 21. INDEXES FOR PHASE 1 TABLES
+-- =====================================================
+CREATE INDEX IF NOT EXISTS idx_user_activity_logs_user_id ON public.user_activity_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_activity_logs_created_at ON public.user_activity_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_logs_action_type ON public.user_activity_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_user_devices_user_id ON public.user_devices(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_devices_created_at ON public.user_devices(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON public.notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(created_at DESC);
+
+-- =====================================================
+-- 22. RLS POLICIES FOR PHASE 1 TABLES
+-- =====================================================
+
+-- User Activity Logs RLS
+ALTER TABLE public.user_activity_logs ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own activity logs"
+  ON public.user_activity_logs
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Service role can insert activity logs"
+  ON public.user_activity_logs
+  FOR INSERT
+  WITH CHECK (auth.jwt()->>'role' = 'service_role');
+
+-- User Devices RLS
+ALTER TABLE public.user_devices ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own devices"
+  ON public.user_devices
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Users can manage their own devices"
+  ON public.user_devices
+  FOR ALL
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role')
+  WITH CHECK (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+-- Notifications RLS
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own notifications"
+  ON public.notifications
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Users can update their own notifications"
+  ON public.notifications
+  FOR UPDATE
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role')
+  WITH CHECK (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Service role can insert notifications"
+  ON public.notifications
+  FOR INSERT
+  WITH CHECK (auth.jwt()->>'role' = 'service_role');
+
+-- Notification Preferences RLS
+ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own preferences"
+  ON public.notification_preferences
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Users can manage their own preferences"
+  ON public.notification_preferences
+  FOR ALL
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role')
+  WITH CHECK (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+-- =====================================================
+-- 23. TRIGGERS FOR PHASE 1 TABLES
+-- =====================================================
+CREATE TRIGGER update_user_devices_timestamp
+  BEFORE UPDATE ON public.user_devices
+  FOR EACH ROW
+  EXECUTE FUNCTION update_timestamp();
+
+CREATE TRIGGER update_notification_preferences_timestamp
+  BEFORE UPDATE ON public.notification_preferences
+  FOR EACH ROW
+  EXECUTE FUNCTION update_timestamp();
