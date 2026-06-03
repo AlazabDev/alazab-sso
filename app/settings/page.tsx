@@ -4,9 +4,12 @@ import { useAuth } from '@/lib/auth/context'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { SessionManager } from '@/components/settings/session-manager'
+import { NotificationPreferencesComponent } from '@/components/settings/notification-preferences'
 import axios from 'axios'
 
 interface UserProfile {
@@ -60,56 +63,52 @@ export default function SettingsPage() {
   const fetchLinkedAccounts = async () => {
     try {
       const response = await axios.get('/api/user/accounts')
-      setLinkedAccounts(response.data)
+      setLinkedAccounts(response.data.accounts || [])
     } catch (error) {
       console.error('Error fetching linked accounts:', error)
     }
   }
 
-  const handleSaveProfile = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleProfileUpdate = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     if (!profile) return
 
     try {
       setIsSaving(true)
-      setSaveMessage(null)
-      await axios.patch('/api/user/profile', {
-        full_name: profile.full_name,
-        language_preference: profile.language_preference,
-      })
-      setSaveMessage({ type: 'success', text: 'Profile updated successfully' })
+      await axios.patch('/api/user/profile', profile)
+      setSaveMessage({ type: 'success', text: 'تم حفظ التغييرات بنجاح' })
+      setTimeout(() => setSaveMessage(null), 3000)
     } catch (error) {
-      setSaveMessage({
-        type: 'error',
-        text: axios.isAxiosError(error) ? error.response?.data?.error : 'Failed to update profile',
-      })
+      console.error('Error updating profile:', error)
+      setSaveMessage({ type: 'error', text: 'حدث خطأ في حفظ التغييرات' })
     } finally {
       setIsSaving(false)
     }
   }
 
-  const handleUnlinkAccount = async (provider: string) => {
+  const handleUnlinkAccount = async (accountId: string) => {
+    if (!confirm('هل تريد فصل هذا الحساب؟')) return
+
     try {
-      await axios.delete(`/api/user/accounts?provider=${provider}`)
-      fetchLinkedAccounts()
-      setSaveMessage({ type: 'success', text: `${provider} account unlinked` })
+      await axios.post(`/api/user/accounts/unlink`, { accountId })
+      setLinkedAccounts(linkedAccounts.filter(acc => acc.id !== accountId))
+      setSaveMessage({ type: 'success', text: 'تم فصل الحساب بنجاح' })
+      setTimeout(() => setSaveMessage(null), 3000)
     } catch (error) {
-      setSaveMessage({
-        type: 'error',
-        text: 'Failed to unlink account',
-      })
+      console.error('Error unlinking account:', error)
+      setSaveMessage({ type: 'error', text: 'حدث خطأ في فصل الحساب' })
     }
   }
 
   if (isLoading || isLoadingProfile) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-foreground/60">جاري التحميل...</p>
       </div>
     )
   }
 
-  if (!user || !profile) {
+  if (!user) {
     return null
   }
 
@@ -117,151 +116,143 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border bg-card">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold">Settings</h1>
-          <Button onClick={() => router.push('/dashboard')} variant="outline">
-            Back to Dashboard
+          <h1 className="text-2xl font-bold">الإعدادات</h1>
+          <Button
+            variant="ghost"
+            onClick={() => router.push('/dashboard')}
+          >
+            العودة إلى لوحة التحكم
           </Button>
         </div>
       </nav>
 
-      <main className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {saveMessage && (
-          <div
-            className={`p-4 rounded-lg mb-6 ${
-              saveMessage.type === 'success'
-                ? 'bg-green-50 border border-green-200'
-                : 'bg-red-50 border border-red-200'
-            }`}
-          >
-            <p
-              className={`text-sm ${
-                saveMessage.type === 'success' ? 'text-green-700' : 'text-red-700'
-              }`}
-            >
+          <Card className={`mb-6 ${saveMessage.type === 'success' ? 'border-green-200' : 'border-red-200'}`}>
+            <CardContent className={`pt-6 ${saveMessage.type === 'success' ? 'text-green-700' : 'text-red-700'}`}>
               {saveMessage.text}
-            </p>
-          </div>
+            </CardContent>
+          </Card>
         )}
 
-        <div className="grid gap-6">
-          {/* Profile Settings */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Profile Settings</CardTitle>
-              <CardDescription>
-                Update your personal information
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSaveProfile} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    value={profile.email}
-                    disabled
-                    className="bg-muted"
-                  />
-                </div>
+        <Tabs defaultValue="profile" className="w-full">
+          <TabsList className="grid w-full grid-cols-4">
+            <TabsTrigger value="profile">الملف الشخصي</TabsTrigger>
+            <TabsTrigger value="accounts">الحسابات المرتبطة</TabsTrigger>
+            <TabsTrigger value="sessions">الجلسات</TabsTrigger>
+            <TabsTrigger value="notifications">الإخطارات</TabsTrigger>
+          </TabsList>
 
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name</Label>
-                  <Input
-                    id="fullName"
-                    value={profile.full_name || ''}
-                    onChange={(e) =>
-                      setProfile({ ...profile, full_name: e.target.value })
-                    }
-                    placeholder="Enter your full name"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="language">Language Preference</Label>
-                  <select
-                    id="language"
-                    value={profile.language_preference}
-                    onChange={(e) =>
-                      setProfile({ ...profile, language_preference: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-input rounded-md"
-                  >
-                    <option value="en">English</option>
-                    <option value="ar">العربية (Arabic)</option>
-                  </select>
-                </div>
-
-                <Button type="submit" disabled={isSaving} className="w-full">
-                  {isSaving ? 'Saving...' : 'Save Changes'}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-
-          {/* Linked Accounts */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Connected Accounts</CardTitle>
-              <CardDescription>
-                Manage your linked OAuth accounts
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {linkedAccounts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No linked accounts yet
-                </p>
-              ) : (
-                <div className="space-y-4">
-                  {linkedAccounts.map((account) => (
-                    <div
-                      key={account.id}
-                      className="flex items-center justify-between p-4 border border-border rounded-lg"
-                    >
-                      <div>
-                        <p className="font-medium capitalize">{account.provider}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {account.provider_email}
-                        </p>
-                      </div>
-                      <Button
-                        onClick={() => handleUnlinkAccount(account.provider)}
-                        variant="destructive"
-                        size="sm"
-                      >
-                        Unlink
-                      </Button>
+          {/* Profile Tab */}
+          <TabsContent value="profile" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>معلومات الملف الشخصي</CardTitle>
+                <CardDescription>قم بتحديث معلومات ملفك الشخصي</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {profile ? (
+                  <form onSubmit={handleProfileUpdate} className="space-y-4">
+                    <div>
+                      <Label htmlFor="email">البريد الإلكتروني</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={profile.email}
+                        disabled
+                        className="mt-1"
+                      />
                     </div>
-                  ))}
-                </div>
-              )}
-            </CardContent>
-          </Card>
+                    <div>
+                      <Label htmlFor="full_name">الاسم الكامل</Label>
+                      <Input
+                        id="full_name"
+                        type="text"
+                        value={profile.full_name}
+                        onChange={(e) =>
+                          setProfile({ ...profile, full_name: e.target.value })
+                        }
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="language">لغة التفضيل</Label>
+                      <select
+                        id="language"
+                        value={profile.language_preference}
+                        onChange={(e) =>
+                          setProfile({ ...profile, language_preference: e.target.value })
+                        }
+                        className="mt-1 w-full px-3 py-2 border border-input rounded-md bg-background"
+                      >
+                        <option value="ar">العربية</option>
+                        <option value="en">English</option>
+                      </select>
+                    </div>
+                    <Button type="submit" disabled={isSaving}>
+                      {isSaving ? 'جاري الحفظ...' : 'حفظ التغييرات'}
+                    </Button>
+                  </form>
+                ) : (
+                  <p className="text-foreground/60">لم يتم تحميل البيانات</p>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-          {/* Account Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Information</CardTitle>
-              <CardDescription>
-                Your account details
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">User ID</p>
-                <p className="font-mono text-sm text-xs">{user.id}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Account Created</p>
-                <p className="text-sm">
-                  {user.created_at
-                    ? new Date(user.created_at).toLocaleDateString()
-                    : 'N/A'}
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          {/* Linked Accounts Tab */}
+          <TabsContent value="accounts" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>الحسابات المرتبطة</CardTitle>
+                <CardDescription>إدارة الحسابات المرتبطة بملفك الشخصي</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {linkedAccounts.length === 0 ? (
+                  <p className="text-foreground/60">لا توجد حسابات مرتبطة</p>
+                ) : (
+                  <div className="space-y-4">
+                    {linkedAccounts.map((account) => (
+                      <div
+                        key={account.id}
+                        className="flex items-center justify-between p-4 border rounded-lg"
+                      >
+                        <div>
+                          <p className="font-medium capitalize text-foreground">
+                            {account.provider}
+                          </p>
+                          <p className="text-sm text-foreground/60">
+                            {account.provider_email}
+                          </p>
+                          <p className="text-xs text-foreground/40 mt-1">
+                            متصل منذ {new Date(account.created_at).toLocaleDateString('ar-SA')}
+                          </p>
+                        </div>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handleUnlinkAccount(account.id)}
+                        >
+                          فصل الحساب
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Sessions Tab */}
+          <TabsContent value="sessions">
+            <SessionManager />
+          </TabsContent>
+
+          {/* Notifications Tab */}
+          <TabsContent value="notifications">
+            <NotificationPreferencesComponent />
+          </TabsContent>
+        </Tabs>
       </main>
     </div>
   )
