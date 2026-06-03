@@ -598,3 +598,196 @@ CREATE TRIGGER update_notification_preferences_timestamp
   BEFORE UPDATE ON public.notification_preferences
   FOR EACH ROW
   EXECUTE FUNCTION update_timestamp();
+
+-- =====================================================
+-- 24. TWO FACTOR AUTHENTICATION (2FA) TABLES
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.two_fa_secrets (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL UNIQUE REFERENCES auth.users(id) ON DELETE CASCADE,
+  secret TEXT NOT NULL,
+  backup_codes TEXT[] NOT NULL,
+  is_enabled BOOLEAN DEFAULT false,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS public.two_fa_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  method TEXT CHECK (method IN ('totp', 'backup_code', 'sms')),
+  status TEXT CHECK (status IN ('success', 'failed', 'attempted')),
+  ip_address INET,
+  user_agent TEXT,
+  error_message TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 25. SECURITY INCIDENTS & ALERTS TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.security_incidents (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  incident_type TEXT NOT NULL CHECK (incident_type IN ('brute_force', 'suspicious_login', 'unusual_location', 'impossible_travel', 'concurrent_sessions', 'failed_verification', 'device_change')),
+  severity TEXT CHECK (severity IN ('low', 'medium', 'high', 'critical')) DEFAULT 'medium',
+  description TEXT,
+  ip_address INET,
+  location_data JSONB,
+  is_resolved BOOLEAN DEFAULT false,
+  resolved_at TIMESTAMP WITH TIME ZONE,
+  resolution_note TEXT,
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 26. IP BLOCKLIST TABLE
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.ip_blocklist (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ip_address INET NOT NULL UNIQUE,
+  blocked_reason TEXT,
+  is_permanent BOOLEAN DEFAULT false,
+  blocked_until TIMESTAMP WITH TIME ZONE,
+  blocked_by UUID REFERENCES public.admin_users(user_id),
+  metadata JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 27. SESSION IMPROVEMENTS
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.session_security_log (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  session_id UUID NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL CHECK (event_type IN ('created', 'active', 'suspicious_activity', 'terminated', 'concurrent_limit_exceeded')),
+  ip_address INET,
+  browser_fingerprint TEXT,
+  location_data JSONB,
+  reason TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =====================================================
+-- 28. INDEXES FOR SECURITY TABLES
+-- =====================================================
+CREATE INDEX IF NOT EXISTS idx_two_fa_secrets_user_id ON public.two_fa_secrets(user_id);
+CREATE INDEX IF NOT EXISTS idx_two_fa_log_user_id ON public.two_fa_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_two_fa_log_created_at ON public.two_fa_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_security_incidents_user_id ON public.security_incidents(user_id);
+CREATE INDEX IF NOT EXISTS idx_security_incidents_type ON public.security_incidents(incident_type);
+CREATE INDEX IF NOT EXISTS idx_security_incidents_created_at ON public.security_incidents(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ip_blocklist_ip ON public.ip_blocklist(ip_address);
+CREATE INDEX IF NOT EXISTS idx_ip_blocklist_created_at ON public.ip_blocklist(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_session_security_log_user_id ON public.session_security_log(user_id);
+CREATE INDEX IF NOT EXISTS idx_session_security_log_created_at ON public.session_security_log(created_at DESC);
+
+-- =====================================================
+-- 29. RLS POLICIES FOR SECURITY TABLES
+-- =====================================================
+
+-- Two FA Secrets RLS
+ALTER TABLE public.two_fa_secrets ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own 2FA settings"
+  ON public.two_fa_secrets
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Users can manage their own 2FA"
+  ON public.two_fa_secrets
+  FOR ALL
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role')
+  WITH CHECK (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+-- Two FA Log RLS
+ALTER TABLE public.two_fa_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own 2FA logs"
+  ON public.two_fa_log
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Service role can insert 2FA logs"
+  ON public.two_fa_log
+  FOR INSERT
+  WITH CHECK (auth.jwt()->>'role' = 'service_role');
+
+-- Security Incidents RLS
+ALTER TABLE public.security_incidents ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own incidents"
+  ON public.security_incidents
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Admins can view all incidents"
+  ON public.security_incidents
+  FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.admin_users
+    WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+  ) OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Service role can insert incidents"
+  ON public.security_incidents
+  FOR INSERT
+  WITH CHECK (auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Admins can update incidents"
+  ON public.security_incidents
+  FOR UPDATE
+  USING (EXISTS (
+    SELECT 1 FROM public.admin_users
+    WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+  ) OR auth.jwt()->>'role' = 'service_role')
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.admin_users
+    WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+  ) OR auth.jwt()->>'role' = 'service_role');
+
+-- IP Blocklist RLS
+ALTER TABLE public.ip_blocklist ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Admins can view blocklist"
+  ON public.ip_blocklist
+  FOR SELECT
+  USING (EXISTS (
+    SELECT 1 FROM public.admin_users
+    WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+  ) OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Admins can manage blocklist"
+  ON public.ip_blocklist
+  FOR ALL
+  USING (EXISTS (
+    SELECT 1 FROM public.admin_users
+    WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+  ) OR auth.jwt()->>'role' = 'service_role')
+  WITH CHECK (EXISTS (
+    SELECT 1 FROM public.admin_users
+    WHERE user_id = auth.uid() AND role IN ('super_admin', 'admin')
+  ) OR auth.jwt()->>'role' = 'service_role');
+
+-- Session Security Log RLS
+ALTER TABLE public.session_security_log ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can view their own session logs"
+  ON public.session_security_log
+  FOR SELECT
+  USING (auth.uid() = user_id OR auth.jwt()->>'role' = 'service_role');
+
+CREATE POLICY "Service role can insert session logs"
+  ON public.session_security_log
+  FOR INSERT
+  WITH CHECK (auth.jwt()->>'role' = 'service_role');
+
+-- =====================================================
+-- 30. TRIGGERS FOR SECURITY TABLES
+-- =====================================================
+CREATE TRIGGER update_two_fa_secrets_timestamp
+  BEFORE UPDATE ON public.two_fa_secrets
+  FOR EACH ROW
+  EXECUTE FUNCTION update_timestamp();
